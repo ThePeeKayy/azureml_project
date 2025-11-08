@@ -53,7 +53,7 @@ python train_cnn.py --model-type ${params.modelType} --lr ${params.learningRate}
   return { jobId, status: "submitted" };
 }
 
-async function getBlobUrls(jobId: string, maxRetries: number = 20, delayMs: number = 5000) {
+async function getBlobUrls(jobId: string, maxRetries: number = 60, delayMs: number = 5000) {
   const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
   if (!connectionString) return null;
   const accountNameMatch = connectionString.match(/AccountName=([^;]+)/);
@@ -119,31 +119,12 @@ async function* streamAzureMLJobProgress(jobId: string) {
       }
 
       if (status === "Completed") {
-  let urls = null;
-  const maxRetries = 60; // e.g., try for up to 5 mins
-  let attempt = 0;
+        yield JSON.stringify({ jobId, status: "waiting_for_outputs", timestamp: new Date().toISOString() }) + "\n";
+        const urls = await getBlobUrls(jobId); // keep maxRetries=20 or more
+        yield JSON.stringify({ jobId, status: "completed", results: urls, timestamp: new Date().toISOString() }) + "\n";
+        break;
+      }
 
-  while (!urls?.model_url && attempt < maxRetries) {
-    urls = await getBlobUrls(jobId, 1, 5000); // try once per iteration
-    yield JSON.stringify({
-      jobId,
-      status: "waiting_for_outputs",
-      message: "Waiting for output files...",
-      timestamp: new Date().toISOString()
-    }) + "\n";
-    attempt++;
-    await new Promise((resolve) => setTimeout(resolve, 5000));
-  }
-
-  yield JSON.stringify({
-    jobId,
-    status: "completed",
-    results: urls,
-    timestamp: new Date().toISOString()
-  }) + "\n";
-
-  break;
-}
 
 
       if (status === "Failed" || status === "Canceled") {
