@@ -53,7 +53,7 @@ python train_cnn.py --model-type ${params.modelType} --lr ${params.learningRate}
   return { jobId, status: "submitted" };
 }
 
-async function getBlobUrls(jobId: string, maxRetries: number = 60, delayMs: number = 5000) {
+async function getBlobUrls(jobId: string, maxRetries: number = 90, delayMs: number = 10000) {
   const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
   if (!connectionString) return null;
   const accountNameMatch = connectionString.match(/AccountName=([^;]+)/);
