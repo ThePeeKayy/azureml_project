@@ -119,20 +119,32 @@ async function* streamAzureMLJobProgress(jobId: string) {
       }
 
       if (status === "Completed") {
-        yield JSON.stringify({ jobId, status: "waiting_for_outputs", message: "Job completed, waiting for output files...", timestamp: new Date().toISOString() }) + "\n";
+  let urls = null;
+  const maxRetries = 60; // e.g., try for up to 5 mins
+  let attempt = 0;
 
-        // Ensure blob URL fetch never breaks the stream
-        let urls = null;
-        try { urls = await getBlobUrls(jobId); } catch (err) { console.error(err); }
+  while (!urls?.model_url && attempt < maxRetries) {
+    urls = await getBlobUrls(jobId, 1, 5000); // try once per iteration
+    yield JSON.stringify({
+      jobId,
+      status: "waiting_for_outputs",
+      message: "Waiting for output files...",
+      timestamp: new Date().toISOString()
+    }) + "\n";
+    attempt++;
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+  }
 
-        yield JSON.stringify({ jobId, status: "completed", portalUrl: urls?.portal_url || null, results: urls ? {
-          model_url: urls.model_url,
-          results_url: urls.results_url,
-          metrics_url: urls.metrics_url,
-          manifest_url: urls.manifest_url
-        } : null, timestamp: new Date().toISOString() }) + "\n";
-        break;
-      }
+  yield JSON.stringify({
+    jobId,
+    status: "completed",
+    results: urls,
+    timestamp: new Date().toISOString()
+  }) + "\n";
+
+  break;
+}
+
 
       if (status === "Failed" || status === "Canceled") {
         yield JSON.stringify({ jobId, status: "error", error: `Job ${status.toLowerCase()}`, timestamp: new Date().toISOString() }) + "\n";
