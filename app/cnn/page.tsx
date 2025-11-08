@@ -87,22 +87,25 @@ export default function Page() {
 
             setJobId(update.jobId)
             setCurrentStatus(update.status)
-            setTrainingData(update)
 
-            if (update.status === "completed") {
-              console.log("Training completed!")
-              console.log("Results:", update.results)
+            // Merge results to avoid overwriting previous chunks
+            setTrainingData(prev => ({
+              ...prev,
+              ...update,
+              results: update.results ?? prev?.results
+            }))
+
+            if (update.status === "completed" && update.results) {
               setIsTraining(false)
             } else if (update.status === "error") {
-              console.error("Training error:", update.error)
               setError(update.error || "Training failed")
               setIsTraining(false)
             }
-
           } catch (e) {
             console.error("Error parsing update:", e, "Line:", line)
           }
         }
+
       }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Training failed"
