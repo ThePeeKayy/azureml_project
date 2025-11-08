@@ -106,50 +106,48 @@ async function* streamAzureMLJobProgress(jobId: string) {
   let previousStatus = "";
 
   while (true) {
-    const response = await fetch(apiUrl, { method: "GET", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } });
-    if (!response.ok) break;
-    const job = await response.json();
-    const status = job.properties?.status || "unknown";
+    try {
+      const response = await fetch(apiUrl, { method: "GET", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } });
+      if (!response.ok) throw new Error(`Failed to fetch job status`);
 
-    if (status !== previousStatus) {
-      yield JSON.stringify({ jobId, status: status.toLowerCase(), timestamp: new Date().toISOString() }) + "\n";
-      previousStatus = status;
-    }
+      const job = await response.json();
+      const status = job.properties?.status || "unknown";
 
-    if (status === "Completed") {
-      // Stream a "waiting for outputs" message
-      yield JSON.stringify({ 
-        jobId, 
-        status: "waiting_for_outputs", 
-        message: "Job completed, waiting for output files to be uploaded to blob storage...",
-        timestamp: new Date().toISOString() 
-      }) + "\n";
-      
-      // Now wait for blob URLs with retry logic
-      const urls = await getBlobUrls(jobId);
-      yield JSON.stringify({ 
-        jobId, 
-        status: "completed", 
-        portalUrl: urls?.portal_url || null,
-        results: urls ? { 
-          model_url: urls.model_url, 
-          results_url: urls.results_url, 
+      if (status !== previousStatus) {
+        yield JSON.stringify({ jobId, status: status.toLowerCase(), timestamp: new Date().toISOString() }) + "\n";
+        previousStatus = status;
+      }
+
+      if (status === "Completed") {
+        yield JSON.stringify({ jobId, status: "waiting_for_outputs", message: "Job completed, waiting for output files...", timestamp: new Date().toISOString() }) + "\n";
+
+        // Ensure blob URL fetch never breaks the stream
+        let urls = null;
+        try { urls = await getBlobUrls(jobId); } catch (err) { console.error(err); }
+
+        yield JSON.stringify({ jobId, status: "completed", portalUrl: urls?.portal_url || null, results: urls ? {
+          model_url: urls.model_url,
+          results_url: urls.results_url,
           metrics_url: urls.metrics_url,
           manifest_url: urls.manifest_url
-        } : null,
-        timestamp: new Date().toISOString() 
-      }) + "\n";
-      break;
-    }
+        } : null, timestamp: new Date().toISOString() }) + "\n";
+        break;
+      }
 
-    if (status === "Failed" || status === "Canceled") {
-      yield JSON.stringify({ jobId, status: "error", error: `Job ${status.toLowerCase()}`, timestamp: new Date().toISOString() }) + "\n";
-      break;
+      if (status === "Failed" || status === "Canceled") {
+        yield JSON.stringify({ jobId, status: "error", error: `Job ${status.toLowerCase()}`, timestamp: new Date().toISOString() }) + "\n";
+        break;
+      }
+
+    } catch (err) {
+      console.error("Error fetching job status:", err);
+      // Retry after delay instead of breaking
     }
 
     await new Promise(resolve => setTimeout(resolve, 3000));
   }
 }
+
 
 export async function POST(request: NextRequest) {
   const { modelType, learningRate, batchSize, numSamples } = await request.json();
