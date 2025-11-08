@@ -52,7 +52,7 @@ class CNNTrainer:
                     train_loader: DataLoader,
                     model_type: str = "mobilenet",
                     learning_rate: float = 0.001,
-                    epochs: int = 3,
+                    epochs: int = 2,
                     num_classes: int = 10) -> Dict:
 
         print(f"\n{'='*60}")
@@ -190,7 +190,7 @@ def main():
                         help="Model architecture: 'simple' (MobileNetV3-Small, fastest) or 'traffic' (ShuffleNetV2, very fast)")
     parser.add_argument("--lr", type=float, default=0.001, help="Learning rate")
     parser.add_argument("--batch-size", type=int, default=64, help="Batch size")
-    parser.add_argument("--epochs", type=int, default=5, help="Number of epochs")
+    parser.add_argument("--epochs", type=int, default=2, help="Number of epochs")
     parser.add_argument("--num-samples", type=int, default=1000, 
                         help="Number of training samples (max 50000 for CIFAR-10)")
     parser.add_argument("--dataset", type=str, default="cifar10",

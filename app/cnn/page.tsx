@@ -87,25 +87,22 @@ export default function Page() {
 
             setJobId(update.jobId)
             setCurrentStatus(update.status)
+            setTrainingData(update)
 
-            // Merge results to avoid overwriting previous chunks
-            setTrainingData(prev => ({
-              ...prev,
-              ...update,
-              results: update.results ?? prev?.results
-            }))
-
-            if (update.status === "completed" && update.results) {
+            if (update.status === "completed") {
+              console.log("Training completed!")
+              console.log("Results:", update.results)
               setIsTraining(false)
             } else if (update.status === "error") {
+              console.error("Training error:", update.error)
               setError(update.error || "Training failed")
               setIsTraining(false)
             }
+
           } catch (e) {
             console.error("Error parsing update:", e, "Line:", line)
           }
         }
-
       }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Training failed"
@@ -298,7 +295,7 @@ export default function Page() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">Epochs:</span>
-                    <span className="font-mono text-xs text-slate-400">5</span>
+                    <span className="font-mono text-xs text-slate-400">2</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">Samples:</span>
