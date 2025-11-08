@@ -1,0 +1,11 @@
+
+$schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
+code: .
+command: python train_spam.py --hidden-units 64 --learning-rate 0.001 --epochs 10
+environment:
+  image: mcr.microsoft.com/azureml/openmpi4.1.0-cuda11.8-cudnn8-ubuntu22.04
+  conda_file: conda.yml
+compute: azureml:cpu-cluster
+experiment_name: spam-detection
+display_name: spam-nn-1762311715566
+description: Neural Network Spam Detection (64 units, 10 epochs)

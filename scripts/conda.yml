@@ -1,0 +1,15 @@
+name: pytorch-env
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - scikit-learn
+  - pip:
+    - tqdm~=4.62.0
+    - pyarrow<=11.0.0
+    - torch
+    - torchvision
+    - datasets==3.1.0
+   
