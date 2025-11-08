@@ -39,7 +39,7 @@ async function submitAzureMLJob(params: HyperParameters) {
       command: `cat > train_cnn.py << 'EOFSCRIPT'
 ${scriptContent}
 EOFSCRIPT
-python train_cnn.py --model-type ${params.modelType} --lr ${params.learningRate} --batch-size ${params.batchSize} --epochs 5 --num-samples ${params.numSamples} --dataset cifar10`,
+python train_cnn.py --model-type ${params.modelType} --lr ${params.learningRate} --batch-size ${params.batchSize} --epochs 2 --num-samples ${params.numSamples} --dataset cifar10`,
       environmentId: `/subscriptions/${subscriptionId}/resourceGroups/${resourceGroup}/providers/Microsoft.MachineLearningServices/workspaces/${workspaceName}/environments/AzureML-ACPT-pytorch-1.13-py38-cuda11.7-gpu/versions/10`,
       computeId: `/subscriptions/${subscriptionId}/resourceGroups/${resourceGroup}/providers/Microsoft.MachineLearningServices/workspaces/${workspaceName}/computes/cpu-cluster`,
       experimentName: "cnn-training",
@@ -147,15 +147,38 @@ export async function POST(request: NextRequest) {
   if (!modelType || learningRate === undefined || !batchSize || !numSamples)
     return NextResponse.json({ error: "Missing hyperparameters" }, { status: 400 });
   const job = await submitAzureMLJob({ modelType, learningRate, batchSize, numSamples });
-  const stream = new ReadableStream({
-    async start(controller) {
-      controller.enqueue(new TextEncoder().encode(JSON.stringify({ jobId: job.jobId, status: "submitted", timestamp: new Date().toISOString() }) + "\n"));
+  const encoder = new TextEncoder();
+
+const stream = new ReadableStream({
+  async start(controller) {
+
+    // ✅ heartbeat every 2 seconds
+    const heartbeat = setInterval(() => {
+      controller.enqueue(
+        encoder.encode(JSON.stringify({ ping: Date.now() }) + "\n")
+      );
+    }, 2000);
+
+    // ✅ initial event
+    controller.enqueue(
+      encoder.encode(JSON.stringify({
+        jobId: job.jobId,
+        status: "submitted",
+        timestamp: new Date().toISOString(),
+      }) + "\n")
+    );
+
+    try {
       for await (const chunk of streamAzureMLJobProgress(job.jobId)) {
-        controller.enqueue(new TextEncoder().encode(chunk));
+        controller.enqueue(encoder.encode(chunk));
       }
+    } finally {
+      clearInterval(heartbeat);
       controller.close();
-    },
-  });
+    }
+  },
+});
+
   return new NextResponse(stream, { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no" } });
 }
 
