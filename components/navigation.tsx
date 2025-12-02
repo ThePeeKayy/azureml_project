@@ -14,7 +14,7 @@ export function Navigation() {
   const links = [
     { href: "/", label: "Home" },
     { href: "/cnn", label: "Image Classifier" },
-    { href: "/train-spam", label: "Spam Detection" },
+    { href: "/train-spam", label: "NLP Classifier" },
     { href: "/pipeline", label: "Pipeline Builder" },
   ]
 

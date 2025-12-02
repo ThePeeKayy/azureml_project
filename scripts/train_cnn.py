@@ -1,24 +1,29 @@
-import os
-import json
-import argparse
-import numpy as np
 from datetime import datetime
-from typing import Dict, List
+import json
+import os
+import argparse
+import zipfile
+import shutil
+from pathlib import Path
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader, Subset
-from torchvision import transforms, datasets
+from torch.utils.data import Dataset, DataLoader
+from torchvision import transforms, models
 from PIL import Image
-import torchvision.models as models
-
-from azureml.core.run import Run
+from tqdm import tqdm
 from azure.storage.blob import BlobServiceClient
 
-run = Run.get_context()
+# ----- Azure ML Run Context -----
+try:
+    from azureml.core import Run
+    run = Run.get_context()
+except Exception:
+    run = None
 
 def upload_to_blob_storage(file_path: str, blob_name: str) -> str:
+    """Upload file to Azure Blob Storage and return public URL"""
     try:
         connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
         if not connection_string:
@@ -26,12 +31,8 @@ def upload_to_blob_storage(file_path: str, blob_name: str) -> str:
             return None
         container_name = "model-outputs"
         blob_service_client = BlobServiceClient.from_connection_string(connection_string)
-        container_client = blob_service_client.get_container_client(container_name)
-        try:
-            container_client.get_container_properties()
-        except:
-            container_client.create_container(public_access='blob')
         blob_client = blob_service_client.get_blob_client(container=container_name, blob=blob_name)
+        print(f"📤 Uploading {blob_name} to blob storage...")
         with open(file_path, "rb") as data:
             blob_client.upload_blob(data, overwrite=True)
         account_name = blob_service_client.account_name
@@ -42,304 +43,382 @@ def upload_to_blob_storage(file_path: str, blob_name: str) -> str:
         print(f"❌ Failed to upload to blob storage: {e}")
         return None
 
-class CNNTrainer:
-    def __init__(self):
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        print(f"Using device: {self.device}")
-        run.log("Device", str(self.device))
-    
-    def train_model(self, 
-                    train_loader: DataLoader,
-                    model_type: str = "mobilenet",
-                    learning_rate: float = 0.001,
-                    epochs: int = 2,
-                    num_classes: int = 10) -> Dict:
-
-        print(f"\n{'='*60}")
-        print(f"Starting Fast CNN Training on Azure ML")
-        print(f"{'='*60}")
-        print(f"Model Type: {model_type}")
-        print(f"Learning Rate: {learning_rate}")
-        print(f"Epochs: {epochs}")
-        print(f"Training Samples: {len(train_loader.dataset)}")
-        print(f"Batch Size: {train_loader.batch_size}")
-        print(f"Device: {self.device}")
-        print(f"{'='*60}\n")
+# ----- Custom Dataset -----
+class CustomImageDataset(Dataset):
+    def __init__(self, root_dir, transform=None):
+        """
+        Args:
+            root_dir (string): Directory with class folders
+            transform (callable, optional): Optional transform to be applied on a sample
+        """
+        self.root_dir = Path(root_dir)
+        self.transform = transform
+        self.classes = sorted([d.name for d in self.root_dir.iterdir() if d.is_dir()])
+        self.class_to_idx = {cls_name: i for i, cls_name in enumerate(self.classes)}
         
-        run.log("Model Type", model_type)
-        run.log("Learning Rate", learning_rate)
-        run.log("Epochs", epochs)
-        run.log("Total Samples", len(train_loader.dataset))
-        run.log("Batch Size", train_loader.batch_size)
-
-        # Create model - using efficient architectures
-        if model_type == "simple":
-            model = models.mobilenet_v3_small(weights=None, num_classes=num_classes)
-            print("📱 Using MobileNetV3-Small (optimized for speed)")
-        else:  # traffic
-            model = models.shufflenet_v2_x1_0(weights=None, num_classes=num_classes)
-            print("🔀 Using ShuffleNetV2 (very fast inference)")
-        
-        model.to(self.device)
-
-        total_params = sum(p.numel() for p in model.parameters())
-        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        print(f"Total parameters: {total_params:,}")
-        print(f"Trainable parameters: {trainable_params:,}")
-        run.log("Total Parameters", total_params)
-        run.log("Trainable Parameters", trainable_params)
-
-        optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-        criterion = nn.CrossEntropyLoss()
-        
-        # Learning rate scheduler for better convergence
-        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=2, verbose=True)
-
-        training_history = {
-            "losses": [],
-            "accuracies": [],
-            "timestamps": [],
-            "learning_rates": []
-        }
-
-        total_steps = len(train_loader) * epochs
-        current_step = 0
-
-        for epoch in range(epochs):
-            model.train()
-            epoch_loss = 0
-            correct = 0
-            total = 0
-
-            for batch_idx, (images, labels) in enumerate(train_loader):
-                images = images.to(self.device)
-                labels = labels.to(self.device)
-
-                # Forward pass
-                outputs = model(images)
-                loss = criterion(outputs, labels)
-
-                # Backward pass
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-
-                # Calculate accuracy
-                _, predicted = torch.max(outputs.data, 1)
-                total += labels.size(0)
-                correct += (predicted == labels).sum().item()
-
-                epoch_loss += loss.item()
-                current_step += 1
-                progress = (current_step / total_steps) * 100
-
-                # Log every 10% of batches
-                if (batch_idx + 1) % max(1, len(train_loader)//10) == 0:
-                    batch_acc = (predicted == labels).sum().item() / labels.size(0)
-                    print(f"Epoch [{epoch+1}/{epochs}] "
-                          f"Batch [{batch_idx+1}/{len(train_loader)}] "
-                          f"Loss: {loss.item():.4f} | "
-                          f"Accuracy: {batch_acc:.2%} | "
-                          f"Progress: {progress:.1f}%")
-
-                    run.log("Batch Loss", loss.item())
-                    run.log("Batch Accuracy", batch_acc)
-                    run.log("Progress", progress)
-
-            # Epoch statistics
-            avg_loss = epoch_loss / len(train_loader)
-            epoch_accuracy = correct / total
-            current_lr = optimizer.param_groups[0]['lr']
-
-            training_history["losses"].append(avg_loss)
-            training_history["accuracies"].append(epoch_accuracy)
-            training_history["timestamps"].append(datetime.now().isoformat())
-            training_history["learning_rates"].append(current_lr)
-
-            print(f"\n{'='*60}")
-            print(f"✓ Epoch {epoch+1}/{epochs} Complete")
-            print(f"  Average Loss: {avg_loss:.4f}")
-            print(f"  Accuracy: {epoch_accuracy:.2%}")
-            print(f"  Learning Rate: {current_lr:.6f}")
-            print(f"{'='*60}\n")
-
-            run.log("Epoch Loss", avg_loss)
-            run.log("Epoch Accuracy", epoch_accuracy)
-            run.log("Epoch", epoch + 1)
-            run.log("Learning Rate", current_lr)
+        # Build file list
+        self.samples = []
+        for class_name in self.classes:
+            class_dir = self.root_dir / class_name
+            class_idx = self.class_to_idx[class_name]
             
-            # Adjust learning rate
-            scheduler.step(avg_loss)
+            for img_path in class_dir.glob('*'):
+                if img_path.suffix.lower() in ['.jpg', '.jpeg', '.png', '.bmp', '.gif']:
+                    self.samples.append((str(img_path), class_idx))
+        
+        print(f"Found {len(self.samples)} images across {len(self.classes)} classes")
+        
+    def __len__(self):
+        return len(self.samples)
+    
+    def __getitem__(self, idx):
+        img_path, label = self.samples[idx]
+        
+        try:
+            image = Image.open(img_path).convert('RGB')
+            
+            if self.transform:
+                image = self.transform(image)
+            
+            return image, label
+        except Exception as e:
+            print(f"Error loading image {img_path}: {e}")
+            # Return a black image if loading fails
+            if self.transform:
+                return self.transform(Image.new('RGB', (224, 224))), label
+            return Image.new('RGB', (224, 224)), label
 
-        print(f"\n{'='*60}")
-        print(f"🎉 Training Complete!")
-        print(f"{'='*60}")
-        print(f"Final Loss: {training_history['losses'][-1]:.4f}")
-        print(f"Final Accuracy: {training_history['accuracies'][-1]:.2%}")
-        print(f"{'='*60}\n")
+# ----- Training Functions -----
+def train_epoch(model, dataloader, optimizer, scheduler, loss_fn, device):
+    model.train()
+    losses = []
+    correct = 0
+    total = 0
+    
+    for images, labels in tqdm(dataloader, desc="Training", leave=False):
+        images = images.to(device)
+        labels = labels.to(device)
+        
+        # Forward pass
+        outputs = model(images)
+        loss = loss_fn(outputs, labels)
+        
+        # Calculate accuracy
+        _, predicted = torch.max(outputs.data, 1)
+        total += labels.size(0)
+        correct += (predicted == labels).sum().item()
+        
+        losses.append(loss.item())
+        
+        # Backward pass
+        optimizer.zero_grad()
+        loss.backward()
+        nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        optimizer.step()
+    
+    accuracy = correct / total
+    avg_loss = sum(losses) / len(losses)
+    return accuracy, avg_loss
 
-        run.log("Final Loss", training_history['losses'][-1])
-        run.log("Final Accuracy", training_history['accuracies'][-1])
+def eval_model(model, dataloader, loss_fn, device):
+    model.eval()
+    losses = []
+    correct = 0
+    total = 0
+    
+    with torch.no_grad():
+        for images, labels in tqdm(dataloader, desc="Evaluating", leave=False):
+            images = images.to(device)
+            labels = labels.to(device)
+            
+            outputs = model(images)
+            loss = loss_fn(outputs, labels)
+            
+            _, predicted = torch.max(outputs.data, 1)
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+            
+            losses.append(loss.item())
+    
+    accuracy = correct / total
+    avg_loss = sum(losses) / len(losses)
+    return accuracy, avg_loss
 
-        return training_history, model
-
+# ----- Main -----
 def main():
-    parser = argparse.ArgumentParser(description="Train Fast CNN on Azure ML")
-    parser.add_argument("--model-type", type=str, default="simple", 
-                        choices=["simple", "traffic"],
-                        help="Model architecture: 'simple' (MobileNetV3-Small, fastest) or 'traffic' (ShuffleNetV2, very fast)")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model-type", type=str, default="mobilenet", choices=["mobilenet", "shufflenet"], help="Type of CNN model to use")
     parser.add_argument("--lr", type=float, default=0.001, help="Learning rate")
     parser.add_argument("--batch-size", type=int, default=64, help="Batch size")
     parser.add_argument("--epochs", type=int, default=2, help="Number of epochs")
-    parser.add_argument("--num-samples", type=int, default=1000, 
-                        help="Number of training samples (max 50000 for CIFAR-10)")
-    parser.add_argument("--dataset", type=str, default="cifar10",
-                        choices=["cifar10", "cifar100"],
-                        help="Dataset to use")
-    
+    parser.add_argument("--dataset-path", type=str, required=True, help="Path to dataset ZIP file")
     args = parser.parse_args()
 
-    print("\n" + "="*60)
-    print("🚀 FAST CNN TRAINING PIPELINE")
-    print("="*60)
-    print(f"Dataset: {args.dataset.upper()}")
-    print(f"Model: {args.model_type}")
-    print(f"Samples: {args.num_samples}")
-    print(f"Batch Size: {args.batch_size}")
-    print(f"Epochs: {args.epochs}")
-    print(f"Learning Rate: {args.lr}")
-    print("="*60 + "\n")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
+    if run:
+        run.log("Device", str(device))
+    
 
-    # Data transforms
+    # ----- Extract Dataset -----
+    extract_dir = "dataset"
+    
+    if os.path.exists(extract_dir):
+        shutil.rmtree(extract_dir)
+    
+    os.makedirs(extract_dir, exist_ok=True)
+    
+    try:
+        with zipfile.ZipFile(args.dataset_path, 'r') as zip_ref:
+            zip_ref.extractall(extract_dir)
+        print(f"✓ Dataset extracted to {extract_dir}")
+    except Exception as e:
+        print(f"❌ Failed to extract dataset: {e}")
+        raise
+
+    # Find the actual data directory (handle nested folders)
+    data_dirs = [d for d in Path(extract_dir).rglob('*') if d.is_dir() and any(d.iterdir())]
+    
+    # Find directory with class folders
+    dataset_root = None
+    for d in data_dirs:
+        subdirs = [x for x in d.iterdir() if x.is_dir()]
+        if len(subdirs) >= 2:  # At least 2 class folders
+            # Check if subdirs contain images
+            has_images = False
+            for subdir in subdirs:
+                image_files = list(subdir.glob('*.jpg')) + list(subdir.glob('*.jpeg')) + list(subdir.glob('*.png'))
+                if image_files:
+                    has_images = True
+                    break
+            if has_images:
+                dataset_root = d
+                break
+    
+    if dataset_root is None:
+        # Try the extract_dir itself
+        subdirs = [x for x in Path(extract_dir).iterdir() if x.is_dir()]
+        if len(subdirs) >= 2:
+            dataset_root = Path(extract_dir)
+        else:
+            raise ValueError(f"Could not find valid dataset structure in {extract_dir}")
+    
+    print(f"Using dataset root: {dataset_root}")
+
+    # ----- Data Transforms -----
     transform_train = transforms.Compose([
+        transforms.Resize(256),
+        transforms.RandomCrop(224),
         transforms.RandomHorizontalFlip(),
-        transforms.RandomCrop(32, padding=4),
         transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
 
-    # Load dataset
-    print("📦 Loading dataset...")
-    if args.dataset == "cifar10":
-        full_dataset = datasets.CIFAR10(
-            root='./data',
-            train=True,
-            download=True,
-            transform=transform_train
-        )
-        num_classes = 10
-        class_names = ['airplane', 'automobile', 'bird', 'cat', 'deer', 
-                      'dog', 'frog', 'horse', 'ship', 'truck']
-    else:
-        full_dataset = datasets.CIFAR100(
-            root='./data',
-            train=True,
-            download=True,
-            transform=transform_train
-        )
-        num_classes = 100
-        class_names = full_dataset.classes
+    transform_val = transforms.Compose([
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
 
-    # Limit dataset size
-    total_available = len(full_dataset)
-    num_samples = min(args.num_samples, total_available)
+    # ----- Load Dataset -----
+    print("📂 Loading custom dataset...")
+    full_dataset = CustomImageDataset(dataset_root, transform=transform_train)
     
-    # Create subset
-    indices = torch.randperm(total_available)[:num_samples].tolist()
-    dataset = Subset(full_dataset, indices)
+    num_classes = len(full_dataset.classes)
+    class_names = full_dataset.classes
+    total_images = len(full_dataset)
     
-    print(f"✅ Dataset loaded: {num_samples} samples from {args.dataset.upper()}")
-    print(f"   Total available: {total_available}")
+    print(f"✅ Dataset loaded:")
+    print(f"   Total images: {total_images}")
     print(f"   Classes: {num_classes}")
-    print(f"   Image size: 32x32x3\n")
+    print(f"   Class names: {class_names}\n")
 
-    # Create data loader
+    # Split dataset into train and validation
+    train_size = int(0.8 * len(full_dataset))
+    val_size = len(full_dataset) - train_size
+    train_dataset, val_dataset = torch.utils.data.random_split(
+        full_dataset, 
+        [train_size, val_size],
+        generator=torch.Generator().manual_seed(42)
+    )
+    
+    # Update validation dataset transform
+    val_dataset.dataset.transform = transform_val
+
+    print(f"📊 Data split:")
+    print(f"   Training samples: {len(train_dataset)}")
+    print(f"   Validation samples: {len(val_dataset)}\n")
+
+    # Create data loaders
     train_loader = DataLoader(
-        dataset,
+        train_dataset,
         batch_size=args.batch_size,
         shuffle=True,
         num_workers=2,
         pin_memory=True
     )
 
-    print(f"📊 Created DataLoader:")
-    print(f"   Batches per epoch: {len(train_loader)}")
-    print(f"   Last batch size: {num_samples % args.batch_size or args.batch_size}\n")
-
-    # Initialize trainer
-    print("🤖 Initializing trainer...")
-    trainer = CNNTrainer()
-
-    # Train model
-    history, model = trainer.train_model(
-        train_loader=train_loader,
-        model_type=args.model_type,
-        learning_rate=args.lr,
-        epochs=args.epochs,
-        num_classes=num_classes
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=2,
+        pin_memory=True
     )
 
-    # Prepare results
+    # ----- Model -----
+    print("🤖 Initializing model...")
+    if args.model_type == "mobilenet":
+        model = models.mobilenet_v3_small(weights=None, num_classes=num_classes)
+        print("📱 Using MobileNetV3-Small")
+    else:
+        model = models.shufflenet_v2_x1_0(weights=None, num_classes=num_classes)
+        print("🔀 Using ShuffleNetV2")
+    
+    model.to(device)
+
+    total_params = sum(p.numel() for p in model.parameters())
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"Total parameters: {total_params:,}")
+    print(f"Trainable parameters: {trainable_params:,}\n")
+
+    optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    criterion = nn.CrossEntropyLoss()
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=2, verbose=True)
+
+    print(f"📈 Training batches per epoch: {len(train_loader)}")
+    print(f"📈 Validation batches per epoch: {len(val_loader)}\n")
+
+    if run:
+        run.log("Model Type", args.model_type)
+        run.log("Learning Rate", args.lr)
+        run.log("Epochs", args.epochs)
+        run.log("Batch Size", args.batch_size)
+        run.log("Total Samples", total_images)
+        run.log("Num Classes", num_classes)
+        run.log("Total Parameters", total_params)
+
+    training_history = {
+        "losses": [], 
+        "accuracies": [], 
+        "val_losses": [], 
+        "val_accuracies": [], 
+        "timestamps": [],
+        "learning_rates": []
+    }
+
+    # ----- Training Loop -----
+    for epoch in range(args.epochs):
+        print(f"\n{'='*60}")
+        print(f"Epoch {epoch + 1}/{args.epochs}")
+        print(f"{'='*60}")
+        
+        train_acc, train_loss = train_epoch(model, train_loader, optimizer, scheduler, criterion, device)
+        val_acc, val_loss = eval_model(model, val_loader, criterion, device)
+
+        current_lr = optimizer.param_groups[0]['lr']
+
+        training_history["losses"].append(train_loss)
+        training_history["accuracies"].append(train_acc)
+        training_history["val_losses"].append(val_loss)
+        training_history["val_accuracies"].append(val_acc)
+        training_history["timestamps"].append(datetime.now().isoformat())
+        training_history["learning_rates"].append(current_lr)
+
+        print(f"✓ Epoch {epoch + 1}/{args.epochs} Complete")
+        print(f"  Train Accuracy: {train_acc:.2%}")
+        print(f"  Train Loss: {train_loss:.4f}")
+        print(f"  Val Accuracy: {val_acc:.2%}")
+        print(f"  Val Loss: {val_loss:.4f}")
+        print(f"  Learning Rate: {current_lr:.6f}")
+        print(f"{'='*60}\n")
+
+        # Adjust learning rate
+        scheduler.step(val_loss)
+
+        if run:
+            run.log("Epoch Loss", train_loss)
+            run.log("Epoch Accuracy", train_acc)
+            run.log("Val Loss", val_loss)
+            run.log("Val Accuracy", val_acc)
+            run.log("Learning Rate", current_lr)
+            run.log("Epoch", epoch + 1)
+
+    print(f"\n{'='*60}")
+    print(f"🎉 Training Complete!")
+    print(f"{'='*60}")
+    print(f"Final Train Loss: {training_history['losses'][-1]:.4f}")
+    print(f"Final Train Accuracy: {training_history['accuracies'][-1]:.2%}")
+    print(f"Final Val Loss: {training_history['val_losses'][-1]:.4f}")
+    print(f"Final Val Accuracy: {training_history['val_accuracies'][-1]:.2%}")
+    print(f"{'='*60}\n")
+
+    # ----- Prepare Results -----
     results = {
-        "dataset": args.dataset,
+        "dataset": os.path.basename(args.dataset_path),
         "model_type": args.model_type,
-        "samples": num_samples,
-        "total_available": total_available,
         "num_classes": num_classes,
         "class_names": class_names,
+        "total_samples": total_images,
+        "train_samples": len(train_dataset),
+        "val_samples": len(val_dataset),
         "hyperparameters": {
             "learning_rate": args.lr,
             "batch_size": args.batch_size,
             "epochs": args.epochs,
         },
-        "training_history": history,
-        "final_loss": history["losses"][-1],
-        "final_accuracy": history["accuracies"][-1],
+        "training_history": training_history,
+        "final_train_loss": training_history["losses"][-1],
+        "final_train_accuracy": training_history["accuracies"][-1],
+        "final_val_loss": training_history["val_losses"][-1],
+        "final_val_accuracy": training_history["val_accuracies"][-1],
         "timestamp": datetime.now().isoformat(),
     }
 
-    # Save outputs
+    # ----- Save Outputs -----
     print("\n📁 Saving outputs...")
     os.makedirs("outputs", exist_ok=True)
 
-    # Save results
     results_path = "outputs/training_results.json"
     with open(results_path, "w") as f:
         json.dump(results, f, indent=2, default=str)
     print(f"✓ Results saved to {results_path}")
 
-    # Save model
-    model_path = "outputs/cnn_model.pth"
+    model_path = "outputs/cnn_custom_model.pth"
     torch.save({
         'model_state_dict': model.state_dict(),
         'model_type': args.model_type,
         'num_classes': num_classes,
         'class_names': class_names,
-        'final_accuracy': results["final_accuracy"],
-        'final_loss': results["final_loss"],
+        'final_val_accuracy': results["final_val_accuracy"],
+        'final_val_loss': results["final_val_loss"],
     }, model_path)
     print(f"✓ Model saved to {model_path}")
-    
-    # CRITICAL: Write metrics to a separate file for easy parsing
+
     metrics_path = "outputs/metrics.json"
     metrics_data = {
-        "final_loss": float(results["final_loss"]),
-        "final_accuracy": float(results["final_accuracy"]),
+        "final_train_loss": float(results["final_train_loss"]),
+        "final_train_accuracy": float(results["final_train_accuracy"]),
+        "final_val_loss": float(results["final_val_loss"]),
+        "final_val_accuracy": float(results["final_val_accuracy"]),
         "training_history": {
-            "losses": [float(x) for x in history["losses"]],
-            "accuracies": [float(x) for x in history["accuracies"]]
+            "train_losses": [float(x) for x in training_history["losses"]],
+            "train_accuracies": [float(x) for x in training_history["accuracies"]],
+            "val_losses": [float(x) for x in training_history["val_losses"]],
+            "val_accuracies": [float(x) for x in training_history["val_accuracies"]]
         }
     }
     with open(metrics_path, "w") as f:
         json.dump(metrics_data, f, indent=2)
     print(f"✓ Metrics saved to {metrics_path}")
 
-    # Upload to Blob Storage for public access
+    # ----- Upload to Blob Storage -----
     print("\n☁️ Uploading to Azure Blob Storage...")
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     job_id = os.getenv("AZUREML_RUN_ID", "local")
     
-    model_blob_name = f"{job_id}/cnn_model_{timestamp}.pth"
+    model_blob_name = f"{job_id}/cnn_custom_model_{timestamp}.pth"
     results_blob_name = f"{job_id}/training_results_{timestamp}.json"
     metrics_blob_name = f"{job_id}/metrics_{timestamp}.json"
     
@@ -353,11 +432,15 @@ def main():
         "model_url": model_url,
         "results_url": results_url,
         "metrics_url": metrics_url,
-        "final_loss": float(results["final_loss"]),
-        "final_accuracy": float(results["final_accuracy"]),
+        "final_train_loss": float(results["final_train_loss"]),
+        "final_train_accuracy": float(results["final_train_accuracy"]),
+        "final_val_loss": float(results["final_val_loss"]),
+        "final_val_accuracy": float(results["final_val_accuracy"]),
         "training_history": {
-            "losses": [float(x) for x in history["losses"]],
-            "accuracies": [float(x) for x in history["accuracies"]]
+            "train_losses": [float(x) for x in training_history["losses"]],
+            "train_accuracies": [float(x) for x in training_history["accuracies"]],
+            "val_losses": [float(x) for x in training_history["val_losses"]],
+            "val_accuracies": [float(x) for x in training_history["val_accuracies"]]
         }
     }
     
@@ -369,47 +452,39 @@ def main():
     manifest_blob_name = f"{job_id}/manifest.json"
     manifest_url = upload_to_blob_storage(manifest_path, manifest_blob_name)
     
-    if model_url:
-        run.log("model_url", model_url)
-        print(f"✓ Model URL: {model_url}")
-    if results_url:
-        run.log("results_url", results_url)
-        print(f"✓ Results URL: {results_url}")
-    if metrics_url:
-        run.log("metrics_url", metrics_url)
-        print(f"✓ Metrics URL: {metrics_url}")
-    if manifest_url:
-        run.log("manifest_url", manifest_url)
-        print(f"✓ Manifest URL: {manifest_url}")
+    if run:
+        if model_url:
+            run.log("model_url", model_url)
+            print(f"✓ Model URL: {model_url}")
+        if results_url:
+            run.log("results_url", results_url)
+            print(f"✓ Results URL: {results_url}")
+        if metrics_url:
+            run.log("metrics_url", metrics_url)
+            print(f"✓ Metrics URL: {metrics_url}")
+        if manifest_url:
+            run.log("manifest_url", manifest_url)
+            print(f"✓ Manifest URL: {manifest_url}")
 
-    run.log("final_loss", float(results["final_loss"]))
-    run.log("final_accuracy", float(results["final_accuracy"]))
+        run.log("final_train_loss", float(results["final_train_loss"]))
+        run.log("final_train_accuracy", float(results["final_train_accuracy"]))
+        run.log("final_val_loss", float(results["final_val_loss"]))
+        run.log("final_val_accuracy", float(results["final_val_accuracy"]))
 
-    for i, (loss, acc) in enumerate(zip(history["losses"], history["accuracies"])):
-        run.log_row("training_progress", epoch=i+1, loss=float(loss), accuracy=float(acc))
+        for i, (t_loss, t_acc, v_loss, v_acc) in enumerate(zip(
+            training_history["losses"], 
+            training_history["accuracies"], 
+            training_history["val_losses"], 
+            training_history["val_accuracies"]
+        )):
+            run.log_row("training_progress", 
+                       epoch=i+1, 
+                       train_loss=float(t_loss), 
+                       train_accuracy=float(t_acc), 
+                       val_loss=float(v_loss), 
+                       val_accuracy=float(v_acc))
 
-    run.upload_file(name="outputs/training_results.json", path_or_stream=results_path)
-    run.upload_file(name="outputs/cnn_model.pth", path_or_stream=model_path)
-    run.upload_file(name="outputs/metrics.json", path_or_stream=metrics_path)
-    run.upload_file(name="outputs/manifest.json", path_or_stream=manifest_path)
-
-    print("✓ Files uploaded to Azure ML run outputs")
-    print("\n" + "="*60)
-    print("✅ TRAINING PIPELINE COMPLETE!")
-    print("="*60)
-    print(f"Dataset: {args.dataset.upper()} ({num_samples} samples)")
-    print(f"Model: {args.model_type}")
-    print(f"Final Loss: {results['final_loss']:.4f}")
-    print(f"Final Accuracy: {results['final_accuracy']:.2%}")
-    print(f"\nPublic URLs:")
-    if model_url:
-        print(f"  Model: {model_url}")
-    if results_url:
-        print(f"  Results: {results_url}")
-    if manifest_url:
-        print(f"  Manifest: {manifest_url}")
-    print("="*60 + "\n")
-    print("✓ All done! Model and results available publicly via blob storage!")
-
+        print("✓ Files uploaded to Azure ML run outputs")
+        
 if __name__ == "__main__":
     main()

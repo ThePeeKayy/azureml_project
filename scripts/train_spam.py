@@ -122,11 +122,15 @@ def main():
     parser.add_argument("--epochs", type=int, default=2)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--sample-size", type=int, default=1000, help="Limit dataset size for faster training")
+    parser.add_argument("--csv-path", type=str, required=True, help="Path to CSV file")
+    parser.add_argument("--dependent-var", type=str, required=True, help="Name of dependent variable column")
     args = parser.parse_args()
 
     print(f"\n{'='*60}")
-    print(f"🚀 DISTILBERT SPAM DETECTION TRAINING (FAST MODE)")
+    print(f"🚀 DISTILBERT CUSTOM CLASSIFICATION TRAINING")
     print(f"{'='*60}")
+    print(f"CSV Path: {args.csv_path}")
+    print(f"Dependent Variable: {args.dependent_var}")
     print(f"Hidden Units: {args.hidden_units}")
     print(f"Learning Rate: {args.learning_rate}")
     print(f"Epochs: {args.epochs}")
@@ -144,19 +148,38 @@ def main():
 
     # ----- Load Dataset -----
     print("📦 Loading dataset...")
-    dataset_url = "https://raw.githubusercontent.com/justmarkham/pycon-2016-tutorial/master/data/sms.tsv"
-    df = pd.read_csv(dataset_url, sep="\t", header=None, names=["label", "message"])
-    df["label"] = df["label"].map({"ham": 0, "spam": 1})
+    df = pd.read_csv(args.csv_path)
+    
+    # Verify dependent variable exists
+    if args.dependent_var not in df.columns:
+        raise ValueError(f"Dependent variable '{args.dependent_var}' not found in CSV. Available columns: {list(df.columns)}")
+    
+    # Get all columns except the dependent variable (these will be concatenated as text)
+    feature_cols = [col for col in df.columns if col != args.dependent_var]
+    
+    # Concatenate all feature columns into a single text column
+    df['text'] = df[feature_cols].astype(str).agg(' '.join, axis=1)
+    
+    # Convert labels to numeric if they aren't already
+    label_col = df[args.dependent_var]
+    unique_labels = label_col.unique()
+    
+    if len(unique_labels) != 2:
+        raise ValueError(f"Only binary classification supported. Found {len(unique_labels)} unique labels: {unique_labels}")
+    
+    # Create label mapping
+    label_map = {unique_labels[0]: 0, unique_labels[1]: 1}
+    df['label'] = label_col.map(label_map)
     
     # Always use sample for faster training
-    print(f"📊 Using sample of {args.sample_size} messages (out of {len(df)} total)")
+    print(f"📊 Using sample of {args.sample_size} rows (out of {len(df)} total)")
     df = df.sample(n=min(args.sample_size, len(df)), random_state=42).reset_index(drop=True)
     
-    print(f"✅ Dataset loaded: {len(df)} messages")
-    print(f"   Spam: {df['label'].sum()} ({df['label'].mean()*100:.1f}%)")
-    print(f"   Ham: {len(df) - df['label'].sum()} ({(1-df['label'].mean())*100:.1f}%)\n")
+    print(f"✅ Dataset loaded: {len(df)} rows")
+    print(f"   Class 0 ({unique_labels[0]}): {(df['label'] == 0).sum()} ({(df['label'] == 0).mean()*100:.1f}%)")
+    print(f"   Class 1 ({unique_labels[1]}): {(df['label'] == 1).sum()} ({(df['label'] == 1).mean()*100:.1f}%)\n")
 
-    train_texts, val_texts, train_labels, val_labels = train_test_split(df["message"], df["label"], test_size=0.2, random_state=42, stratify=df["label"])
+    train_texts, val_texts, train_labels, val_labels = train_test_split(df['text'], df['label'], test_size=0.2, random_state=42, stratify=df['label'])
 
     tokenizer = DistilBertTokenizer.from_pretrained("distilbert-base-uncased")
 
@@ -183,6 +206,7 @@ def main():
         run.log("Epochs", args.epochs)
         run.log("Batch Size", args.batch_size)
         run.log("Total Samples", len(df))
+        run.log("Dependent Variable", args.dependent_var)
 
     training_history = {"losses": [], "accuracies": [], "val_losses": [], "val_accuracies": [], "timestamps": []}
 
@@ -225,7 +249,7 @@ def main():
     print(f"{'='*60}\n")
 
     # ----- Prepare Results -----
-    results = {"dataset": "UCI SMS Spam Collection", "model_type": "DistilBERT", "samples": len(df), "spam_count": int(df['label'].sum()), "ham_count": int(len(df) - df['label'].sum()), "hyperparameters": {"hidden_units": args.hidden_units, "learning_rate": args.learning_rate, "batch_size": args.batch_size, "epochs": args.epochs, "sample_size": args.sample_size}, "training_history": training_history, "final_train_loss": training_history["losses"][-1], "final_train_accuracy": training_history["accuracies"][-1], "final_val_loss": training_history["val_losses"][-1], "final_val_accuracy": training_history["val_accuracies"][-1], "timestamp": datetime.now().isoformat()}
+    results = {"dataset": os.path.basename(args.csv_path), "model_type": "DistilBERT", "dependent_variable": args.dependent_var, "label_mapping": {str(k): int(v) for k, v in label_map.items()}, "samples": len(df), "class_0_count": int((df['label'] == 0).sum()), "class_1_count": int((df['label'] == 1).sum()), "hyperparameters": {"hidden_units": args.hidden_units, "learning_rate": args.learning_rate, "batch_size": args.batch_size, "epochs": args.epochs, "sample_size": args.sample_size}, "training_history": training_history, "final_train_loss": training_history["losses"][-1], "final_train_accuracy": training_history["accuracies"][-1], "final_val_loss": training_history["val_losses"][-1], "final_val_accuracy": training_history["val_accuracies"][-1], "timestamp": datetime.now().isoformat()}
 
     # ----- Save Outputs -----
     print("\n📁 Saving outputs...")
@@ -237,7 +261,7 @@ def main():
     print(f"✓ Results saved to {results_path}")
 
     model_path = "outputs/distilbert_spam_model.pt"
-    torch.save({"model_state_dict": model.state_dict(), "hidden_units": args.hidden_units, "final_val_accuracy": results["final_val_accuracy"], "final_val_loss": results["final_val_loss"]}, model_path)
+    torch.save({"model_state_dict": model.state_dict(), "hidden_units": args.hidden_units, "label_mapping": label_map, "final_val_accuracy": results["final_val_accuracy"], "final_val_loss": results["final_val_loss"]}, model_path)
     print(f"✓ Model saved to {model_path}")
 
     metrics_path = "outputs/metrics.json"
@@ -251,7 +275,7 @@ def main():
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     job_id = os.getenv("AZUREML_RUN_ID", "local")
     
-    model_blob_name = f"{job_id}/distilbert_spam_model_{timestamp}.pt"
+    model_blob_name = f"{job_id}/distilbert_custom_model_{timestamp}.pt"
     results_blob_name = f"{job_id}/training_results_{timestamp}.json"
     metrics_blob_name = f"{job_id}/metrics_{timestamp}.json"
     
@@ -292,25 +316,6 @@ def main():
             run.log_row("training_progress", epoch=i+1, train_loss=float(t_loss), train_accuracy=float(t_acc), val_loss=float(v_loss), val_accuracy=float(v_acc))
 
         print("✓ Files uploaded to Azure ML run outputs")
-
-    print("\n" + "="*60)
-    print("✅ TRAINING PIPELINE COMPLETE!")
-    print("="*60)
-    print(f"Dataset: UCI SMS Spam Collection ({len(df)} messages)")
-    print(f"Model: DistilBERT")
-    print(f"Final Train Loss: {results['final_train_loss']:.4f}")
-    print(f"Final Train Accuracy: {results['final_train_accuracy']:.2%}")
-    print(f"Final Val Loss: {results['final_val_loss']:.4f}")
-    print(f"Final Val Accuracy: {results['final_val_accuracy']:.2%}")
-    print(f"\nPublic URLs:")
-    if model_url:
-        print(f"  Model: {model_url}")
-    if results_url:
-        print(f"  Results: {results_url}")
-    if manifest_url:
-        print(f"  Manifest: {manifest_url}")
-    print("="*60 + "\n")
-    print("✓ All done! Model and results available publicly via blob storage!")
-
+        
 if __name__ == "__main__":
     main()

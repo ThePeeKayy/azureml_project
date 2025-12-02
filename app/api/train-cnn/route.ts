@@ -2,12 +2,32 @@
 import { NextRequest, NextResponse } from "next/server";
 import path from "path";
 import fs from "fs";
+import { BlobServiceClient } from "@azure/storage-blob";
 
 interface HyperParameters {
   modelType: string;
   learningRate: number;
   batchSize: number;
-  numSamples: number;
+  epochs: number;
+  datasetFileName: string;
+}
+
+async function uploadToBlob(content: Buffer | string, blobName: string): Promise<string> {
+  const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING!;
+  const containerName = "training-inputs";
+  
+  const blobServiceClient = BlobServiceClient.fromConnectionString(connectionString);
+  const containerClient = blobServiceClient.getContainerClient(containerName);
+  await containerClient.createIfNotExists({ access: "blob" });
+  
+  const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+  if (typeof content === 'string') {
+    await blockBlobClient.upload(content, content.length);
+  } else {
+    await blockBlobClient.upload(content, content.length);
+  }
+  
+  return blockBlobClient.url;
 }
 
 async function getAzureMLAuthToken(): Promise<string> {
@@ -28,7 +48,7 @@ async function getAzureMLAuthToken(): Promise<string> {
   return (await response.json()).access_token;
 }
 
-async function submitAzureMLJob(params: HyperParameters) {
+async function submitAzureMLJob(params: HyperParameters, datasetBuffer: Buffer) {
   const token = await getAzureMLAuthToken();
   const scriptPath = path.join(process.cwd(), "scripts", "train_cnn.py");
   const scriptContent = fs.readFileSync(scriptPath, "utf-8");
@@ -38,15 +58,30 @@ async function submitAzureMLJob(params: HyperParameters) {
   const workspaceName = process.env.AZURE_ML_WORKSPACE_NAME!;
   const apiUrl = `https://management.azure.com/subscriptions/${subscriptionId}/resourceGroups/${resourceGroup}/providers/Microsoft.MachineLearningServices/workspaces/${workspaceName}/jobs/${jobId}?api-version=2024-01-01-preview`;
 
+  // Upload script and dataset to blob storage
+  console.log("Uploading training script to blob storage...");
+  const scriptUrl = await uploadToBlob(scriptContent, `${jobId}/train_cnn.py`);
+  
+  console.log("Uploading dataset to blob storage...");
+  const datasetUrl = await uploadToBlob(datasetBuffer, `${jobId}/${params.datasetFileName}`);
+
+  // Build command
+  const command = [
+    `wget -O train_cnn.py "${scriptUrl}"`,
+    `wget -O ${params.datasetFileName} "${datasetUrl}"`,
+    `pip install torch torchvision pillow azure-storage-blob tqdm --break-system-packages`,
+    `python train_cnn.py --model-type ${params.modelType} --lr ${params.learningRate} --batch-size ${params.batchSize} --epochs ${params.epochs} --dataset-path ${params.datasetFileName}`
+  ].join(" && ");
+
   const jobConfig = {
     properties: {
       jobType: "Command",
-      command: `cat > train_cnn.py << 'EOFSCRIPT'\n${scriptContent}\nEOFSCRIPT\npython train_cnn.py --model-type ${params.modelType} --lr ${params.learningRate} --batch-size ${params.batchSize} --epochs 2 --num-samples ${params.numSamples} --dataset cifar10`,
+      command: command,
       environmentId: `/subscriptions/${subscriptionId}/resourceGroups/${resourceGroup}/providers/Microsoft.MachineLearningServices/workspaces/${workspaceName}/environments/AzureML-ACPT-pytorch-1.13-py38-cuda11.7-gpu/versions/10`,
       computeId: `/subscriptions/${subscriptionId}/resourceGroups/${resourceGroup}/providers/Microsoft.MachineLearningServices/workspaces/${workspaceName}/computes/cpu-cluster`,
       experimentName: "cnn-training",
-      displayName: `Fast CNN Training - ${params.modelType} (${params.numSamples} samples) - ${new Date().toISOString()}`,
-      description: `Fast CNN training on CIFAR-10 dataset`,
+      displayName: `Fast CNN Training - ${params.modelType} - ${new Date().toISOString()}`,
+      description: `Fast CNN training on custom dataset`,
       environmentVariables: { AZURE_STORAGE_CONNECTION_STRING: process.env.AZURE_STORAGE_CONNECTION_STRING || "" },
     },
   };
@@ -140,41 +175,63 @@ async function* streamAzureMLJobProgress(jobId: string) {
 }
 
 export async function POST(request: NextRequest) {
-  const { modelType, learningRate, batchSize, numSamples } = await request.json();
-  if (!modelType || learningRate === undefined || !batchSize || !numSamples) {
-    return NextResponse.json({ error: "Missing hyperparameters" }, { status: 400 });
-  }
-
-  const job = await submitAzureMLJob({ modelType, learningRate, batchSize, numSamples });
-  const encoder = new TextEncoder();
-
-  const stream = new ReadableStream({
-    async start(controller) {
-      // Initial event
-      controller.enqueue(encoder.encode(JSON.stringify({
-        jobId: job.jobId,
-        status: "submitted",
-        timestamp: new Date().toISOString(),
-      }) + "\n"));
-
-      try {
-        for await (const chunk of streamAzureMLJobProgress(job.jobId)) {
-          controller.enqueue(encoder.encode(chunk));
-        }
-      } finally {
-        controller.close();
-      }
-    },
-  });
-
-  return new NextResponse(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      "Connection": "keep-alive",
-      "X-Accel-Buffering": "no"
+  try {
+    const formData = await request.formData();
+    
+    const file = formData.get("file") as File;
+    const modelType = formData.get("modelType") as string;
+    const learningRate = parseFloat(formData.get("learningRate") as string);
+    const batchSize = parseInt(formData.get("batchSize") as string);
+    const epochs = parseInt(formData.get("epochs") as string);
+    
+    if (!file || !modelType || !learningRate || !batchSize || !epochs) {
+      return NextResponse.json({ error: "Missing required parameters" }, { status: 400 });
     }
-  });
+
+    const datasetBuffer = Buffer.from(await file.arrayBuffer());
+
+    const job = await submitAzureMLJob({ 
+      modelType, 
+      learningRate, 
+      batchSize, 
+      epochs,
+      datasetFileName: file.name
+    }, datasetBuffer);
+    
+    const encoder = new TextEncoder();
+
+    const stream = new ReadableStream({
+      async start(controller) {
+        controller.enqueue(encoder.encode(JSON.stringify({
+          jobId: job.jobId,
+          status: "submitted",
+          timestamp: new Date().toISOString(),
+        }) + "\n"));
+
+        try {
+          for await (const chunk of streamAzureMLJobProgress(job.jobId)) {
+            controller.enqueue(encoder.encode(chunk));
+          }
+        } finally {
+          controller.close();
+        }
+      },
+    });
+
+    return new NextResponse(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no"
+      }
+    });
+  } catch (error) {
+    console.error("Error in POST:", error);
+    return NextResponse.json({ 
+      error: error instanceof Error ? error.message : "Unknown error" 
+    }, { status: 500 });
+  }
 }
 
 export async function GET(request: NextRequest) {
