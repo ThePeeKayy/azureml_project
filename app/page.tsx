@@ -26,7 +26,7 @@ export default function HomePage() {
 
       {/* Gradient overlay */}
 
-      <div className="relative pt-10 pb-10 md:pb-1 px-4">
+      <div className="relative pt-32 sm:pt-16 pb-10 md:pb-1 px-4">
         <div className="container mx-auto max-w-6xl">
           {/* Hero Section - minimalist style */}
           <div className="text-center mb-10">
