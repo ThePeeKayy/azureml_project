@@ -489,93 +489,13 @@ export default function CustomTrainingPage() {
                     <div className="flex-1 min-w-0">
                       <h3 className="text-base md:text-lg font-semibold text-blue-400 mb-2">Training Complete!</h3>
 
-                      {/* Training Metrics */}
-                      <div className="bg-slate-900/50 rounded-lg p-3 md:p-4 mb-3 md:mb-4 space-y-2">
-                        {trainingData.results.final_train_accuracy && (
-                          <p className="text-xs md:text-sm">
-                            <span className="text-slate-500">Training Accuracy:</span>{" "}
-                            <span className="font-mono text-emerald-300">
-                              {(trainingData.results.final_train_accuracy * 100).toFixed(2)}%
-                            </span>
-                          </p>
-                        )}
-                        {trainingData.results.final_val_accuracy && (
-                          <p className="text-xs md:text-sm">
-                            <span className="text-slate-500">Validation Accuracy:</span>{" "}
-                            <span className="font-mono text-blue-300">
-                              {(trainingData.results.final_val_accuracy * 100).toFixed(2)}%
-                            </span>
-                          </p>
-                        )}
-                        {trainingData.results.final_train_loss && (
-                          <p className="text-xs md:text-sm">
-                            <span className="text-slate-500">Training Loss:</span>{" "}
-                            <span className="font-mono text-orange-300">
-                              {trainingData.results.final_train_loss.toFixed(4)}
-                            </span>
-                          </p>
-                        )}
-                        {trainingData.results.final_val_loss && (
-                          <p className="text-xs md:text-sm">
-                            <span className="text-slate-500">Validation Loss:</span>{" "}
-                            <span className="font-mono text-purple-300">
-                              {trainingData.results.final_val_loss.toFixed(4)}
-                            </span>
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Training History */}
-                      {trainingData.results?.training_history &&
-                        trainingData.results.training_history.train_losses.length > 0 && (
-                          <div className="bg-slate-900/50 rounded-lg p-3 space-y-2 mb-4">
-                            <p className="text-xs font-semibold text-slate-400">
-                              Training History ({trainingData.results.training_history.train_losses.length} Epochs)
-                            </p>
-                            <div className="space-y-1 text-xs">
-                              <p>
-                                <span className="text-slate-500">Train Losses:</span>{" "}
-                                <span className="font-mono text-emerald-300">
-                                  {trainingData.results.training_history.train_losses
-                                    .map((l) => l.toFixed(4))
-                                    .join(" → ")}
-                                </span>
-                              </p>
-                              <p>
-                                <span className="text-slate-500">Train Accuracies:</span>{" "}
-                                <span className="font-mono text-purple-300">
-                                  {trainingData.results.training_history.train_accuracies
-                                    .map((a) => `${(a * 100).toFixed(1)}%`)
-                                    .join(" → ")}
-                                </span>
-                              </p>
-                              <p>
-                                <span className="text-slate-500">Val Losses:</span>{" "}
-                                <span className="font-mono text-blue-300">
-                                  {trainingData.results.training_history.val_losses
-                                    .map((l) => l.toFixed(4))
-                                    .join(" → ")}
-                                </span>
-                              </p>
-                              <p>
-                                <span className="text-slate-500">Val Accuracies:</span>{" "}
-                                <span className="font-mono text-amber-300">
-                                  {trainingData.results.training_history.val_accuracies
-                                    .map((a) => `${(a * 100).toFixed(1)}%`)
-                                    .join(" → ")}
-                                </span>
-                              </p>
-                            </div>
-                          </div>
-                        )}
-
                       {/* Download Buttons */}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 md:gap-3">
                         {trainingData.results.model_url && (
                           <Button
                             onClick={() => window.open(trainingData.results?.model_url, "_blank")}
                             variant="outline"
-                            className="w-full bg-blue-950/30 border-blue-800/50 hover:bg-blue-900/30 text-blue-400 text-xs md:text-sm"
+                            className="w-full bg-blue-950/30 border-blue-800/50 hover:text-white hover:bg-blue-900/30 text-blue-400 text-xs md:text-sm"
                           >
                             <Download className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2" />
                             Model (.pt)
@@ -585,7 +505,7 @@ export default function CustomTrainingPage() {
                           <Button
                             onClick={() => window.open(trainingData.results?.results_url, "_blank")}
                             variant="outline"
-                            className="w-full bg-emerald-950/30 border-emerald-800/50 hover:bg-emerald-900/30 text-emerald-400 text-xs md:text-sm"
+                            className="w-full bg-emerald-950/30 border-emerald-800/50 hover:text-white hover:bg-emerald-900/30 text-emerald-400 text-xs md:text-sm"
                           >
                             <FileCode className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2" />
                             Results
@@ -595,7 +515,7 @@ export default function CustomTrainingPage() {
                           <Button
                             onClick={() => window.open(trainingData.results?.metrics_url, "_blank")}
                             variant="outline"
-                            className="w-full bg-purple-950/30 border-purple-800/50 hover:bg-purple-900/30 text-purple-400 text-xs md:text-sm"
+                            className="w-full bg-purple-950/30 border-purple-800/50 hover:text-white hover:bg-purple-900/30 text-purple-400 text-xs md:text-sm"
                           >
                             <FileJson className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2" />
                             Metrics
@@ -605,26 +525,13 @@ export default function CustomTrainingPage() {
                           <Button
                             onClick={() => window.open(trainingData.results?.manifest_url, "_blank")}
                             variant="outline"
-                            className="w-full bg-orange-950/30 border-orange-800/50 hover:bg-orange-900/30 text-orange-400 text-xs md:text-sm"
+                            className="w-full bg-orange-950/30 border-orange-800/50 hover:text-white hover:bg-orange-900/30 text-orange-400 text-xs md:text-sm"
                           >
                             <Database className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2" />
                             Manifest
                           </Button>
                         )}
                       </div>
-
-                      {/* Training History Chart */}
-                      {trainingData.results.training_history && (
-                        <div className="mt-4 md:mt-6">
-                          <h4 className="text-sm md:text-base font-semibold text-white mb-3 md:mb-4">
-                            Training History
-                          </h4>
-                          {/* Placeholder for future chart component */}
-                          <div className="bg-slate-900/50 rounded-lg p-4 text-center text-slate-500 text-sm">
-                            Chart will be rendered here.
-                          </div>
-                        </div>
-                      )}
                     </div>
                   </div>
                 </Card>
