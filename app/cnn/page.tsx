@@ -523,6 +523,7 @@ export default function CustomImageTrainingPage() {
 
                       <Button
                         onClick={loadSampleData}
+                        onTouchStart={loadSampleData}
                         variant="outline"
                         className="w-full mt-3 md:mt-4 bg-slate-800 border-slate-700 hover:bg-slate-700 text-white text-sm md:text-base"
                       >

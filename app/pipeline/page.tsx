@@ -689,42 +689,81 @@ export default function ADFPipelinePage() {
                   </TabsContent>
 
                   <TabsContent value="runs" className="mt-4">
-                    <div className="rounded-lg border border-slate-700 overflow-hidden">
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead className="bg-slate-800">
-                            <tr>
-                              <th className="px-4 py-3 text-left text-slate-300 font-semibold">Run ID</th>
-                              <th className="px-4 py-3 text-left text-slate-300 font-semibold">Status</th>
-                              <th className="px-4 py-3 text-left text-slate-300 font-semibold">Start Time</th>
-                              <th className="px-4 py-3 text-left text-slate-300 font-semibold">Duration</th>
-                            </tr>
-                          </thead>
-                          <tbody className="bg-slate-900/50">
-                            {pipelineRuns.map((run) => (
-                              <tr key={run.runId} className="border-t border-slate-800">
-                                <td className="px-4 py-3 text-slate-300 font-mono text-xs">
-                                  {run.runId}
-                                </td>
-                                <td className="px-4 py-3">
-                                  <div className="flex items-center gap-2">
-                                    {getStatusIcon(run.status)}
-                                    <span className="text-slate-300">{run.status}</span>
-                                  </div>
-                                </td>
-                                <td className="px-4 py-3 text-slate-300">
-                                  {formatTimestamp(run.startTime)}
-                                </td>
-                                <td className="px-4 py-3 text-slate-300">
-                                  {run.duration ? `${run.duration}s` : "-"}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                {/* Mobile View */}
+                <div className="block md:hidden space-y-3">
+                  {pipelineRuns.map((run) => (
+                    <Card key={run.runId} className="p-4 bg-slate-800/50 border-slate-700">
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-slate-400">Run ID</span>
+                          <span className="text-xs text-slate-300 font-mono truncate ml-2">
+                            {run.runId}
+                          </span>
+                        </div>
+                        
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-slate-400">Status</span>
+                          <div className="flex items-center gap-2">
+                            {getStatusIcon(run.status)}
+                            <span className="text-xs text-slate-300">{run.status}</span>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-slate-400">Start Time</span>
+                          <span className="text-xs text-slate-300">
+                            {formatTimestamp(run.startTime)}
+                          </span>
+                        </div>
+                        
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-slate-400">Duration</span>
+                          <span className="text-xs text-slate-300">
+                            {run.duration ? `${run.duration}s` : "-"}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  </TabsContent>
+                    </Card>
+                  ))}
+                </div>
+
+                {/* Desktop View */}
+                <div className="hidden md:block rounded-lg border border-slate-700 overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-800">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-slate-300 font-semibold">Run ID</th>
+                          <th className="px-4 py-3 text-left text-slate-300 font-semibold">Status</th>
+                          <th className="px-4 py-3 text-left text-slate-300 font-semibold">Start Time</th>
+                          <th className="px-4 py-3 text-left text-slate-300 font-semibold">Duration</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-slate-900/50">
+                        {pipelineRuns.map((run) => (
+                          <tr key={run.runId} className="border-t border-slate-800">
+                            <td className="px-4 py-3 text-slate-300 font-mono text-xs">
+                              {run.runId}
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                {getStatusIcon(run.status)}
+                                <span className="text-slate-300">{run.status}</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-slate-300">
+                              {formatTimestamp(run.startTime)}
+                            </td>
+                            <td className="px-4 py-3 text-slate-300">
+                              {run.duration ? `${run.duration}s` : "-"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </TabsContent>
                 </Tabs>
               </Card>
               
