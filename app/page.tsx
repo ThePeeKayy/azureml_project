@@ -8,7 +8,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 
 export default function HomePage() {
   return (
-    <div className="min-h-screen bg-slate-950 relative overflow-hidden">
+    <div className="min-h-screen bg-slate-950 relative md:max-h-screen overflow-hidden">
       <Navigation />
       {/* Subtle texture overlay */}
       <div className="absolute inset-0 opacity-[0.025] pointer-events-none bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMDAiIGhlaWdodD0iMzAwIj48ZmlsdGVyIGlkPSJhIiB4PSIwIiB5PSIwIj48ZmVUdXJidWxlbmNlIGJhc2VGcmVxdWVuY3k9Ii43NSIgc3RpdGNoVGlsZXM9InN0aXRjaCIgdHlwZT0iZnJhY3RhbE5vaXNlIi8+PGZlQ29sb3JNYXRyaXggdHlwZT0ic2F0dXJhdGUiIHZhbHVlcz0iMCIvPjwvZmlsdGVyPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbHRlcj0idXJsKCNhKSIvPjwvc3ZnPg==')]" />
@@ -26,10 +26,10 @@ export default function HomePage() {
 
       {/* Gradient overlay */}
 
-      <div className="relative pt-32 sm:pt-16 pb-10 md:pb-1 px-4">
+      <div className="relative pt-32 sm:pt-18 pb-1 md:pb-1 px-4">
         <div className="container mx-auto max-w-6xl">
           {/* Hero Section - minimalist style */}
-          <div className="text-center mb-10">
+          <div className="text-center mb-5">
             <h1 className="text-5xl md:text-7xl font-light mb-6 text-white tracking-tight leading-tight text-balance">
               <span className="text-blue-500 font-bold">Azure </span>AI
               <span className="block mt-2 font-light">Learning Playground</span>
@@ -42,9 +42,9 @@ export default function HomePage() {
             </p>
           </div>
 
-          <div className="max-w-3xl mx-auto mb-12rounded-lg">
-            <Card className="p-6 bg-transparent border-gray-800 backdrop-blur-sm">
-              <div className="flex items-center justify-center gap-4">
+          <div className="max-w-3xl mx-auto mb-8 rounded-lg">
+            <Card className="p-3 bg-transparent border-gray-800 backdrop-blur-sm">
+              <div className="flex items-center justify-center gap-2">
                 <div className="text-center">
                   <p className="text-lg md:text-xl text-white mb-10 font-medium">
                     Look for these info icons throughout the pages
@@ -70,10 +70,10 @@ export default function HomePage() {
           </div>
 
           {/* Training Options Grid - original grid structure */}
-          <div className="grid p-10 md:p-0 md:grid-cols-3 gap-6 mb-16 mt-10">
+          <div className="grid p-10 md:p-0 md:grid-cols-3 gap-6 mb-16 mt-5">
             {/* Image Classifier Card */}
             <Link href="/cnn" className="group">
-              <Card className="p-6 bg-slate-900/50 border-white/5 hover:border-blue-500 transition-all cursor-pointer backdrop-blur-sm relative overflow-hidden h-full">
+              <Card className="p-6 bg-slate-900/50 border-gray-800 hover:border-blue-500 transition-all cursor-pointer backdrop-blur-sm relative overflow-hidden h-full">
                 <div className="absolute inset-0 bg-gradient-to-br from-[#c9b58c]/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                 <div className="relative pb-4">
                   <h3 className="text-xl font-light mb-3 text-white group-hover:text-blue-500 transition-colors">
@@ -105,7 +105,7 @@ export default function HomePage() {
 
             {/* Spam Detection Card */}
             <Link href="/train-spam" className="group">
-              <Card className="p-6 bg-slate-900/50 border-white/5 hover:border-blue-500 transition-all cursor-pointer backdrop-blur-sm relative overflow-hidden h-full">
+              <Card className="p-6 bg-slate-900/50 border-gray-800 hover:border-blue-500 transition-all cursor-pointer backdrop-blur-sm relative overflow-hidden h-full">
                 <div className="absolute inset-0 bg-gradient-to-br from-[#c9b58c]/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                 <div className="relative pb-4">
                   <h3 className="text-xl font-light mb-3 text-white group-hover:text-blue-500 transition-colors">
@@ -131,7 +131,7 @@ export default function HomePage() {
 
             {/* Pipeline Builder Card */}
             <Link href="/pipeline" className="group">
-              <Card className="p-6 bg-slate-900/50 border-white/5 hover:border-blue-500 transition-all cursor-pointer backdrop-blur-sm relative overflow-hidden h-full">
+              <Card className="p-6 bg-slate-900/50 border-gray-800 hover:border-blue-500 transition-all cursor-pointer backdrop-blur-sm relative overflow-hidden h-full">
                 <div className="absolute inset-0 bg-gradient-to-br from-[#c9b58c]/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                 <div className="relative pb-4">
                   <h3 className="text-xl font-light mb-3 text-white group-hover:text-blue-500 transition-colors">
