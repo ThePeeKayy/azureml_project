@@ -14,17 +14,17 @@ export function Navigation() {
   const links = [
     { href: "/", label: "Home" },
     { href: "/cnn", label: "Image Classifier" },
-    { href: "/train-spam", label: "NLP Classifier" },
+    { href: "/train-spam", label: "Text Classifier" },
     { href: "/pipeline", label: "Pipeline Builder" },
   ]
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800">
+    <nav className="absolute top-0 left-0 right-0 z-50 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800">
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-3">
-            <span className="font-semibold text-white">Azure ML Showcase</span>
+            <span className="font-semibold text-white">AzureML Playground</span>
           </Link>
 
           {/* Desktop Navigation */}

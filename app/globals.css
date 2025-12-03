@@ -154,3 +154,12 @@
     @apply bg-background text-foreground;
   }
 }
+
+* {
+  -ms-overflow-style: none; 
+  scrollbar-width: none; 
+}
+
+*::-webkit-scrollbar {
+  display: none;  
+}

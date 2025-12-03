@@ -94,7 +94,6 @@ export default function ADFPipelinePage() {
     }
   ])
 
-  // State for real data from ADF
   const [triggers, setTriggers] = useState<TriggerConfig[]>([])
   const [pipelineRuns, setPipelineRuns] = useState<PipelineRun[]>([])
   const [flightData, setFlightData] = useState<FlightData | null>(null)
@@ -160,7 +159,6 @@ export default function ADFPipelinePage() {
     }
   ]
 
-  // Fetch triggers from API
   const fetchTriggers = async () => {
     try {
       const response = await fetch(`${API_BASE_URL}/triggers`)
@@ -169,7 +167,6 @@ export default function ADFPipelinePage() {
       setTriggers(data.triggers || [])
     } catch (err) {
       console.error("Error fetching triggers:", err)
-      // Fallback mock data
       setTriggers([])
     }
   }
@@ -317,50 +314,6 @@ export default function ADFPipelinePage() {
     setDraggedActivity(null)
   }
 
-  const exportPipelineJSON = () => {
-    const pipelineJSON = {
-      name: "pl_flight_data_ingestion",
-      properties: {
-        activities: activities.map((activity, index) => ({
-          name: activity.name.replace(/\s+/g, "_"),
-          type: activity.activityType,
-          dependsOn: index > 0 ? [{
-            activity: activities[index - 1].name.replace(/\s+/g, "_"),
-            dependencyConditions: ["Succeeded"]
-          }] : [],
-          policy: {
-            timeout: "0.12:00:00",
-            retry: 2,
-            retryIntervalInSeconds: 30
-          }
-        })),
-        parameters: {
-          SourceAPI: {
-            type: "string",
-            defaultValue: "https://opensky-network.org/api/states/all"
-          }
-        },
-        annotations: ["ADF", "Real-time Data", "Flight Tracking"]
-      }
-    }
-
-    const blob = new Blob([JSON.stringify(pipelineJSON, null, 2)], { type: "application/json" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = "adf-pipeline.json"
-    a.click()
-  }
-
-  const getTriggerColor = (type: string) => {
-    switch (type) {
-      case "schedule": return "border-blue-500/30 text-blue-400"
-      case "tumbling-window": return "border-yellow-500/30 text-yellow-400"
-      case "storage-event": return "border-emerald-500/30 text-emerald-400"
-      default: return "border-slate-500/30 text-slate-400"
-    }
-  }
-
   const getStatusIcon = (status: string) => {
     switch (status) {
       case "Succeeded": return <CheckCircle className="h-4 w-4 text-emerald-400" />
@@ -410,6 +363,35 @@ export default function ADFPipelinePage() {
             </p>
           </div>
 
+<Card className="p-4 md:p-6 bg-transparent border-blue-800/30">
+  <div className="flex items-start gap-3">
+    <div>
+      <p className="text-sm text-slate-300 leading-relaxed">
+        This playground page demonstrates end-to-end{" "}
+        <strong className="text-blue-300">data orchestration</strong> for real-time flight tracking.
+        The pipeline ingests live flight data from the OpenSky Network API, which provides aircraft positions,
+        velocities, altitudes, and metadata for thousands of active flights worldwide. Using
+        <strong className="text-purple-300"> Azure Data Factory</strong>, the pipeline executes a sequence of
+        activities: a Copy activity fetches JSON data from the API, a Data Flow activity transforms and enriches
+        the geography data (latitude, longitude, altitude, velocity), and a Delete activity archives old raw files.
+        The processed data is stored as Parquet files with Snappy compression in
+        <strong className="text-cyan-300"> Azure Blob Storage</strong>. The pipeline supports three trigger types—
+        Schedule (fixed intervals), Tumbling Window (non-overlapping time windows), and Storage Event (blob
+        creation/modification)—allowing flexible automation. You can manually trigger runs, monitor execution status
+        in real-time, and view live flight details including callsigns, positions, altitudes, and ground status.
+        <br />
+        <br />  
+        <span className="font-bold">Azure Data Factory: </span>A cloud-based ETL (Extract, Transform, Load) service that orchestrates data movement and transformation across hybrid data estates using visual pipelines with built-in activities, triggers, and monitoring.
+        <br />
+        <span className="font-bold">Schedule Trigger: </span>Executes pipelines at fixed time intervals (e.g., every 15 minutes) using cron-like expressions, ideal for regular batch processing and periodic data ingestion.
+        <br />
+        <span className="font-bold">Tumbling Window Trigger: </span>Creates non-overlapping, fixed-size time windows that process data in sequential chunks, ensuring exactly-once execution per window and enabling backfill for historical data processing.
+        <br />
+        <span className="font-bold">Storage Event Trigger: </span>Responds to blob storage events (create, delete) in real-time, enabling event-driven architectures where pipelines automatically process new files as they arrive in storage containers.
+      </p>
+    </div>
+  </div>
+</Card>
           {/* Error Alert */}
           {error && (
             <Alert className="mb-6 border-yellow-500/30 bg-yellow-500/10">
@@ -464,19 +446,6 @@ export default function ADFPipelinePage() {
                     <span className="text-xs">{type.icon} {type.label}</span>
                   </Button>
                 ))}
-              </div>
-
-              {/* Export */}
-              <div className="mt-6 pt-6 border-t border-slate-800">
-                <Button
-                  onClick={exportPipelineJSON}
-                  variant="outline"
-                  className="w-full border-slate-700"
-                  size="sm"
-                >
-                  <Download className="h-4 w-4 mr-2" />
-                  Export Pipeline JSON
-                </Button>
               </div>
 
               {/* Info */}

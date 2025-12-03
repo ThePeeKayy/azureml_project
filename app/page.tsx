@@ -3,6 +3,8 @@ import Image from "next/image"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Navigation } from "@/components/navigation"
+import { Info } from "lucide-react"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 export default function HomePage() {
   return (
@@ -23,32 +25,59 @@ export default function HomePage() {
       </div>
 
       {/* Gradient overlay */}
-      <div className="absolute inset-0 bg-gradient-to-br from-blue-950/10 via-transparent to-slate-950/50 pointer-events-none" />
 
       <div className="relative pt-32 pb-10 md:pb-1 px-4">
         <div className="container mx-auto max-w-6xl">
           {/* Hero Section - minimalist style */}
           <div className="text-center mb-10">
             <h1 className="text-5xl md:text-7xl font-light mb-6 text-white tracking-tight leading-tight text-balance">
-              <span className="text-blue-500 font-bold">Azure </span>Machine Learning
-              <span className="block mt-2 font-light">Training Platform</span>
+              <span className="text-blue-500 font-bold">Azure </span>AI
+              <span className="block mt-2 font-light">Learning Playground</span>
             </h1>
             <p className="text-xl text-slate-400 max-w-2xl mx-auto mb-8 leading-relaxed text-pretty font-light">
-              Train real models and observe real pipelines powered by Azure infrastructure.
-              <span className="font-normal text-blue-500"> Disclaimer:</span> you cannot change tabs or refresh the
-              page during training. Training takes ~8mins on an f4s_v2 VM.
+              Learn the fundamentals of <span className="font-semibold text-blue-500">Natural Language Processing</span>, 
+              <span className="font-semibold text-blue-500"> Computer Vision</span>, and <span className="font-semibold text-blue-500">Pipeline Orchestration </span> 
+              using Azure's infrastructure.
+              <span className="font-normal text-blue-500"> Note:</span> during training, avoid changing tabs or refreshing the page. Training typically takes ~8 minutes on an f4s_v2 VM.
             </p>
           </div>
 
+          <div className="max-w-3xl mx-auto mb-12rounded-lg">
+            <Card className="p-6 bg-transparent border-gray-800 backdrop-blur-sm">
+              <div className="flex items-center justify-center gap-4">
+                <div className="text-center">
+                  <p className="text-lg md:text-xl text-white mb-10 font-medium">
+                    Look for these info icons throughout the pages
+                  </p>
+                  <div className="flex items-center justify-center gap-3">
+                    <TooltipProvider delayDuration={300}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="p-3 bg-slate-900 rounded-full border-2 border-gray-500 cursor-help hover:bg-slate-800 transition-colors">
+                            <Info className="h-6 w-6 text-gray-400 animate-pulse" />
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          <p className="text-sm font-semibold">I am a tooltip! 🎉</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    <span className="text-slate-300 text-base">← Hover over me!</span>
+                  </div>
+                </div>
+              </div>
+            </Card>
+          </div>
+
           {/* Training Options Grid - original grid structure */}
-          <div className="grid p-10 md:p-0 md:grid-cols-3 gap-6 mb-16">
+          <div className="grid p-10 md:p-0 md:grid-cols-3 gap-6 mb-16 mt-10">
             {/* Image Classifier Card */}
             <Link href="/cnn" className="group">
               <Card className="p-6 bg-slate-900/50 border-white/5 hover:border-blue-500 transition-all cursor-pointer backdrop-blur-sm relative overflow-hidden h-full">
                 <div className="absolute inset-0 bg-gradient-to-br from-[#c9b58c]/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                 <div className="relative pb-4">
                   <h3 className="text-xl font-light mb-3 text-white group-hover:text-blue-500 transition-colors">
-                    Image Classifier
+                    Computer Vision
                   </h3>
                   <div className="flex flex-wrap gap-2">
                     <Badge
@@ -80,7 +109,7 @@ export default function HomePage() {
                 <div className="absolute inset-0 bg-gradient-to-br from-[#c9b58c]/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                 <div className="relative pb-4">
                   <h3 className="text-xl font-light mb-3 text-white group-hover:text-blue-500 transition-colors">
-                    Spam Detector
+                    Natural Language Processing
                   </h3>
                   <div className="flex flex-wrap gap-2">
                     <Badge
@@ -106,7 +135,7 @@ export default function HomePage() {
                 <div className="absolute inset-0 bg-gradient-to-br from-[#c9b58c]/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                 <div className="relative pb-4">
                   <h3 className="text-xl font-light mb-3 text-white group-hover:text-blue-500 transition-colors">
-                    Pipeline Builder
+                    Pipeline Basics
                   </h3>
                   <div className="flex flex-wrap gap-2">
                     <Badge
